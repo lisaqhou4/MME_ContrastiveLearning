@@ -93,7 +93,7 @@ source_loader, labeled_target_loader, target_loader_val, target_loader_test, tar
 
 
 use_gpu = torch.cuda.is_available()
-record_dir = 'record/%s/%s' % (args.dataset, args.method)
+record_dir = 'record/%s/%s' % (args.dataset, args.net)
 if not os.path.exists(record_dir):
     os.makedirs(record_dir)
 
@@ -338,10 +338,10 @@ def train():
             is_train_dsne = True
 
             info_dict["val_loss"].append(loss_val.item())
-            info_dict["val_acc"].append(acc_val.item())
+            info_dict["val_acc"].append(acc_val)
 
             info_dict["test_loss"].append(loss_test.item())
-            info_dict["test_acc"].append(acc_test.item())
+            info_dict["test_acc"].append(acc_test)
 
             if acc_test >= best_acc_test:
                 best_acc_test = acc_test
@@ -376,18 +376,18 @@ def train():
             return data.cpu().numpy()
         return np.array(data)
 
-    def scale_epochs(array, epochs_per_point=100):
+    def scale_epochs(array, epochs_per_point=args.log_interval):
         return np.arange(len(array)) * epochs_per_point
 
     # Plot for test vs validation loss
     plt.figure(figsize=(10, 6))
     plt.plot(
-        scale_epochs(to_numpy(info_dict["val_loss"]), epochs_per_point=500),
+        scale_epochs(to_numpy(info_dict["val_loss"]), epochs_per_point=args.save_interval),
         to_numpy(info_dict["val_loss"]),
         label="Validation Loss",
     )
     plt.plot(
-        scale_epochs(to_numpy(info_dict["test_loss"]), epochs_per_point=500),
+        scale_epochs(to_numpy(info_dict["test_loss"]), epochs_per_point=args.save_interval),
         to_numpy(info_dict["test_loss"]),
         label="Test Loss",
     )
@@ -402,12 +402,12 @@ def train():
     # Plot for test vs validation accuracy
     plt.figure(figsize=(10, 6))
     plt.plot(
-        scale_epochs(to_numpy(info_dict["val_acc"]), epochs_per_point=500),
+        scale_epochs(to_numpy(info_dict["val_acc"]), epochs_per_point=args.save_interval),
         to_numpy(info_dict["val_acc"]),
         label="Validation Accuracy",
     )
     plt.plot(
-        scale_epochs(to_numpy(info_dict["test_acc"]), epochs_per_point=500),
+        scale_epochs(to_numpy(info_dict["test_acc"]), epochs_per_point=args.save_interval),
         to_numpy(info_dict["test_acc"]),
         label="Test Accuracy",
     )
@@ -441,7 +441,7 @@ def train():
     plt.title("Train Cross Entropy Loss")
     plt.savefig("train_loss_c_plot.png")  # Save the plot as a PNG file
     plt.close()
-    
+
     # Plot for train instance contrastive learning loss
     plt.figure(figsize=(10, 6))
     plt.plot(
