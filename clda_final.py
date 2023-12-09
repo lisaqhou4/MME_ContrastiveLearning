@@ -3,6 +3,7 @@ import argparse
 import os
 import shutil
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import datetime
 import torch.nn as nn
@@ -110,8 +111,8 @@ elif args.net == "vgg":
 else:
     raise ValueError('Model cannot be recognized.')
 
-simclr_loss= SupervisedConLoss(temperature=5,base_temperature=5)
-group_simclr = SupervisedConLoss(temperature=5,base_temperature=5)
+simclr_loss= SupervisedConLoss(temperature=5, base_temperature=5)
+group_simclr = SupervisedConLoss(temperature=5, base_temperature=5)
 params = []
 for key, value in dict(G.named_parameters()).items():
     if value.requires_grad:
@@ -218,6 +219,16 @@ def train():
     data_iter_t_unl = iter(target_loader_unl)
     len_train_target_semi = len(target_loader_unl)
 
+    info_dict = {
+        "train_total_loss": [],
+        "train_loss_c": [],
+        "train_simclr_loss": [],
+        "train_grp_loss": [],
+        "val_loss": [],
+        "val_acc": [],
+        "test_loss": [],
+        "test_acc": []    
+    }    
     best_acc = 0
     counter = 0
 
@@ -256,12 +267,13 @@ def train():
         data_t_unl = next(data_iter_t_unl)
         data_s = next(data_source_labeled)
 
-        im_data_s = Variable(data_s[0].cuda())
+        im_data_s = Variable(data_s[0].cuda()) #labeled source data
         gt_labels_s = Variable(data_s[1].cuda())
-        im_data_t = Variable(data_t[0].cuda())
+        im_data_t = Variable(data_t[0].cuda()) #labeled target data
         gt_labels_t = Variable(data_t[1].cuda())
-        im_data_tu = Variable(data_t_unl[0].cuda())
-        im_data_tu2 = Variable(data_t_unl[1].cuda())
+        im_data_tu = Variable(data_t_unl[0].cuda()) #weakly augmented unlabeled image
+        #gt_data_tu = Variable(data_t_unl[1].cuda())
+        im_data_tu2 = Variable(data_t_unl[1].cuda()) #strongly augmented unlabeled
         zero_grad_all()
 
         data = torch.cat((im_data_s, im_data_t, im_data_tu, im_data_tu2), 0)
@@ -274,15 +286,15 @@ def train():
         nl = ns + nt
         nu = im_data_tu.size(0)
 
-        feat_source = torch.softmax(out1[:ns],dim=-1)
-        feat_target = torch.softmax(out1[ns:nl],dim=-1)
-        feat_target_unlabeled = torch.softmax(out1[nl:nl+nu],dim=-1)
-        feature_target_unlabled_hard = torch.softmax(out1[nl+nu:],dim=-1)
+        feat_source = torch.softmax(out1[:ns],dim=-1) #feature from source
+        feat_target = torch.softmax(out1[ns:nl],dim=-1) #feature from labeled target
+        feat_target_unlabeled = torch.softmax(out1[nl:nl+nu],dim=-1) #?
+        feature_target_unlabled_hard = torch.softmax(out1[nl+nu:],dim=-1) #?
 
-        loss_c = criterion(out1[:nl], target)
+        loss_c = criterion(out1[:nl], target) #calculate cross entroype loss for labeled source and target
         feat_target_unlabeled_detach = feat_target_unlabeled.detach()
         features = torch.cat([feat_target_unlabeled_detach.unsqueeze(1), feature_target_unlabled_hard.unsqueeze(1)], dim=1)
-        simclr_loss_unlabeled = torch.max(torch.tensor(0.000).cuda(),simclr_loss(features))
+        simclr_loss_unlabeled = torch.max(torch.tensor(0.000).cuda(), simclr_loss(features))
         if avg_group_centroid is None:
             grp_loss = torch.tensor(0.00).cuda()
             avg_group_centroid={}
@@ -305,14 +317,31 @@ def train():
         F1.zero_grad()
         zero_grad_all()
 
+
+
         if step % args.log_interval == 0:
-            print(log_train)
+            print(log_train)          
+            info_dict["train_total_loss"].append(loss_comb.item())
+            info_dict["train_loss_c"].append(loss_c.item())
+            info_dict["train_simclr_loss"].append(simclr_loss_unlabeled.item())
+            info_dict["train_grp_loss"].append(grp_loss.item())
+
+            # loss_val, acc_val = test(target_loader_val)
+            # info_dict["val_loss"].append(loss_val.item())
+            # info_dict["val_acc"].append(acc_val.item())
+
 
 
         if (step % args.save_interval == 0 or step+1== args.steps) and step > 0:
             loss_test, acc_test = test(target_loader_test)
             loss_val, acc_val = test(target_loader_val)
             is_train_dsne = True
+
+            info_dict["val_loss"].append(loss_val.item())
+            info_dict["val_acc"].append(acc_val.item())
+
+            info_dict["test_loss"].append(loss_test.item())
+            info_dict["test_acc"].append(acc_test.item())
 
             if acc_test >= best_acc_test:
                 best_acc_test = acc_test
@@ -321,7 +350,7 @@ def train():
             else:
                 is_best=False
                 counter += 1
-                
+            
             print('best acc test %f' % (best_acc_test))
             G.train()
             F1.train()
@@ -341,6 +370,104 @@ def train():
                 'optimizer_D': optimizer_f.state_dict()
                 }
             save_checkpoint(filename, state,is_best)
+
+    def to_numpy(data):
+        if isinstance(data, torch.Tensor):
+            return data.cpu().numpy()
+        return np.array(data)
+
+    def scale_epochs(array, epochs_per_point=100):
+        return np.arange(len(array)) * epochs_per_point
+
+    # Plot for test vs validation loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["val_loss"]), epochs_per_point=500),
+        to_numpy(info_dict["val_loss"]),
+        label="Validation Loss",
+    )
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["test_loss"]), epochs_per_point=500),
+        to_numpy(info_dict["test_loss"]),
+        label="Test Loss",
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Validation and Test Loss")
+    plt.legend()
+    plt.savefig("val_test_loss_plot.png")  # Save the combined plot as a PNG file
+    plt.close()
+
+
+    # Plot for test vs validation accuracy
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["val_acc"]), epochs_per_point=500),
+        to_numpy(info_dict["val_acc"]),
+        label="Validation Accuracy",
+    )
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["test_acc"]), epochs_per_point=500),
+        to_numpy(info_dict["test_acc"]),
+        label="Test Accuracy",
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy % ")
+    plt.title("Validation and Test Accuracy")
+    plt.legend()
+    plt.savefig("val_test_acc_plot.png")  # Save the combined plot as a PNG file
+    plt.close()
+    
+    # Plot for train total loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["train_total_loss"])),
+        to_numpy(info_dict["train_total_loss"]),
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Train Total Loss")
+    plt.savefig("train_total_loss_plot.png")  # Save the plot as a PNG file
+    plt.close()
+
+    # Plot for test loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["train_loss_c"])),
+        to_numpy(info_dict["train_loss_c"]),
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Train Cross Entropy Loss")
+    plt.savefig("train_loss_c_plot.png")  # Save the plot as a PNG file
+    plt.close()
+    
+    # Plot for train instance contrastive learning loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["train_simclr_loss"])),
+        to_numpy(info_dict["train_simclr_loss"]),
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Instance Contrastive Loss")
+    plt.title("Train Instance Contrastive Loss")
+    plt.savefig("train_simclr_loss.png")  # Save the plot as a PNG file
+    plt.close()
+
+    # Plot for Inter-domain contrastive loss 
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        scale_epochs(to_numpy(info_dict["train_grp_loss"])), 
+        to_numpy(info_dict["train_grp_loss"])
+    )
+    plt.xlabel("Epochs")
+    plt.ylabel("Inter-domain contrastive loss")
+    plt.title("Train Inter-domain contrastive Loss")
+    plt.savefig("train_grp_loss_plot.png")  # Save the plot as a PNG file
+    plt.close()
+
+
+
 
 def save_checkpoint(filename,state, is_best):
     torch.save(state, filename)

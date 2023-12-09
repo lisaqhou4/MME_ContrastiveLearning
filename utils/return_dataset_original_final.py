@@ -64,7 +64,7 @@ def return_dataset_balance_self(args,test=False):
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]),
-        'val': transforms.Compose([
+        'val': transforms.Compose([ #weakly augmented transformation
             transforms.Resize(256),
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(crop_size),
@@ -77,7 +77,7 @@ def return_dataset_balance_self(args,test=False):
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]),
-        'self': transforms.Compose([
+        'self': transforms.Compose([ #strongly augmented transformation
             transforms.Resize(256),
             transforms.RandomResizedCrop(crop_size),
             transforms.RandomHorizontalFlip(),
@@ -98,7 +98,7 @@ def return_dataset_balance_self(args,test=False):
         target_dataset_test = Imagelists_VISDA_Test(image_set_file_unl, root=root, transform=data_transforms['test'], dict_path2img=dict_path2img)
     else:
         target_dataset_test = Imagelists_VISDA(image_set_file_unl, root=root, transform=data_transforms['test'], dict_path2img=dict_path2img)
-    target_dataset_unl = Imagelists_VISDA_un(image_set_file_unl, root=root, transform=data_transforms['val'],transform2=data_transforms['self'])
+    target_dataset_unl = Imagelists_VISDA_un(image_set_file_unl, root=root, transform=data_transforms['val'], transform2=data_transforms['self'])
     
     target_dataset = Imagelists_VISDA(image_set_file_t, root=root, transform=data_transforms['train'], dict_path2img=dict_path2img) 
 
@@ -111,7 +111,7 @@ def return_dataset_balance_self(args,test=False):
     else:
         bs = 24
 
-    nw = 12
+    nw = 2
 
 
     source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=bs,

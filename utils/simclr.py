@@ -333,7 +333,7 @@ class GroupSupConLoss(nn.Module):
 
 
 class SupervisedConLoss(nn.Module):
-    """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
+    """Supervised Contrastive Learning: 
     It also supports the unsupervised contrastive loss in SimCLR"""
     def __init__(self, temperature=0.07, contrast_mode='all',
                  base_temperature=0.07):
@@ -341,6 +341,7 @@ class SupervisedConLoss(nn.Module):
         self.temperature = temperature
         self.contrast_mode = contrast_mode
         self.base_temperature = base_temperature
+
 
     def forward(self, features, labels=None, mask=None):
         """Compute loss for model. If both `labels` and `mask` are None,
@@ -353,7 +354,7 @@ class SupervisedConLoss(nn.Module):
                 has the same class as sample i. Can be asymmetric.
         Returns:
             A loss scalar.
-        """
+        """ 
         device = (torch.device('cuda')
                   if features.is_cuda
                   else torch.device('cpu'))
